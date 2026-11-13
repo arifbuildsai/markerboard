@@ -1,0 +1,17 @@
+# render intermediates — regenerate with `npm run render`
+build_video.mp4
+build_fx.wav
+out/
+qc/
+out.mp4
+
+# your narration and transcript source; beatwords.json IS committed on purpose
+vo.mp3
+vo.wav
+vo.m4a
+*.mp3
+!demo/*.gif
+
+node_modules/
+.DS_Store
+Thumbs.db

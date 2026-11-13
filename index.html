@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Whiteboard Explainer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Permanent+Marker&display=block">
+<style>
+  html, body { margin: 0; height: 100%; background: #101215; color: #e8e6e0;
+    font-family: "Kalam", ui-sans-serif, system-ui, cursive; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; display: grid; place-items: center; }
+  #stage { position: relative; box-shadow: 0 16px 60px rgba(0,0,0,.6); border-radius: 6px; }
+  canvas { display: block; background: #dfe4e3; border-radius: 6px; }
+  #bar { position: absolute; left: 0; right: 0; bottom: -50px; height: 42px; display: flex;
+    align-items: center; gap: 10px; }
+  #bar button { background: #2a2e35; color: #e8e6e0; border: 1px solid #3a3f47; border-radius: 7px;
+    padding: 6px 12px; cursor: pointer; font: inherit; font-size: 15px; }
+  #bar button:hover { background: #343a42; }
+  #scrub { flex: 1; min-width: 160px; accent-color: #ffd75e; }
+  #clock { min-width: 112px; text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; color: #a9adb6; }
+  #load { position: absolute; top: 10px; right: 10px; opacity: .25; transition: opacity .2s; }
+  #load:hover { opacity: 1; }
+  #hint { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #7a7f88; }
+  body.drag #hint { color: #ffd75e; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv" width="1280" height="720"></canvas>
+    <input id="file" type="file" accept="audio/*" style="display:none" />
+    <button id="load" class="x" title="Load voiceover audio">Load voiceover</button>
+    <div id="bar">
+      <button id="play">Play</button>
+      <input id="scrub" type="range" min="0" max="30" step="0.001" value="0" />
+      <span id="clock">0.00 / 30.00</span>
+      <button id="snd">Sound: on</button>
+      <button id="loop">Loop: on</button>
+    </div>
+  </div>
+</div>
+<div id="hint">without a voiceover file it runs on its own clock · drop an audio file anywhere</div>
+
+<script src="src/harness.js"></script>
+<script src="src/sound.js"></script>
+<script src="src/medium.js"></script>
+<script>
+  // beatwords as a window global — loaded synchronously so the style can read it.
+  // (A <script src> with type="application/json" never loads and has no textContent.)
+  (function () {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', 'story/beatwords.json', false);
+      xhr.send(null);
+      if (xhr.status !== 200 && xhr.status !== 0) throw new Error('status ' + xhr.status);
+      window.BEATWORDS = JSON.parse(xhr.responseText);
+    } catch (e) {
+      window.BEATWORDS = [];
+      window.BEATWORDS_ERROR = String(e);
+    }
+  })();
+</script>
+<script src="story/story.js"></script>
+<script>
+(async function () {
+  const cv = document.getElementById('cv');
+  const scrub = document.getElementById('scrub');
+  const clock = document.getElementById('clock');
+  const btnPlay = document.getElementById('play');
+  const btnSnd = document.getElementById('snd');
+  const btnLoop = document.getElementById('loop');
+  const fileIn = document.getElementById('file');
+  const btnLoad = document.getElementById('load');
+
+  await H.loadFonts({ fonts: ['400 66px "Permanent Marker"', '700 38px "Kalam"', '400 40px "Permanent Marker"'] });
+
+  const D = window.DURATION;
+  scrub.max = D;
+  scrub.oninput = () => setT(parseFloat(scrub.value));
+
+  const draw = (tt) => H.render({ draw: window.explainer, readsPixels: true }, cv, tt);
+  window.seek = (tt) => { draw(tt); };
+  window.DURATION = D;
+
+  let audio = null, playing = false, t = 0, last = 0, soundOn = true, looping = true, stopSound = null;
+
+  const nowT = () => (audio ? audio.currentTime : t);
+  function setT(v) {
+    v = Math.max(0, Math.min(D, v));
+    if (audio) { try { audio.currentTime = v; } catch (e) {} } else t = v;
+    draw(v); scrub.value = v; clock.textContent = v.toFixed(2) + ' / ' + D.toFixed(2);
+  }
+  function startSound() { if (soundOn && !stopSound) stopSound = SOUND.live(window.scoreSound, nowT(), { voiceover: true }); }
+  function stopAudio() { if (stopSound) { stopSound(); stopSound = null; } }
+  function play() {
+    if (audio) audio.play().catch(() => {});
+    playing = true; last = performance.now(); btnPlay.textContent = 'Pause'; startSound();
+  }
+  function pause() {
+    playing = false; if (audio) audio.pause(); btnPlay.textContent = 'Play'; stopAudio();
+  }
+  function tick(ts) {
+    if (playing) {
+      if (audio) draw(audio.currentTime);
+      else {
+        t += (ts - last) / 1000;
+        if (t >= D) { if (looping) { t = 0; stopAudio(); startSound(); } else { t = D; pause(); } }
+        draw(t);
+      }
+      const c = nowT();
+      scrub.value = c; clock.textContent = c.toFixed(2) + ' / ' + D.toFixed(2);
+    }
+    last = ts; requestAnimationFrame(tick);
+  }
+  function attach(src) {
+    audio = new Audio(src);
+    audio.addEventListener('loadedmetadata', () => { audio.currentTime = 0; draw(0); });
+    audio.addEventListener('ended', () => { if (looping) { audio.currentTime = 0; play(); } else pause(); });
+    play();
+  }
+
+  btnPlay.onclick = () => (playing ? pause() : play());
+  btnSnd.onclick = () => {
+    soundOn = !soundOn; btnSnd.textContent = 'Sound: ' + (soundOn ? 'on' : 'off');
+    stopAudio(); if (soundOn && playing) startSound();
+  };
+  btnLoop.onclick = () => { looping = !looping; btnLoop.textContent = 'Loop: ' + (looping ? 'on' : 'off'); };
+  btnLoad.onclick = () => fileIn.click();
+  fileIn.onchange = () => { const f = fileIn.files[0]; if (f) attach(URL.createObjectURL(f)); };
+  window.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drag'); });
+  window.addEventListener('dragleave', () => document.body.classList.remove('drag'));
+  window.addEventListener('drop', (e) => {
+    e.preventDefault(); document.body.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('audio/')) attach(URL.createObjectURL(f));
+  });
+  document.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); } });
+
+  draw(0);
+  requestAnimationFrame(tick);
+  window.PLAYER_READY = true;
+})();
+</script>
+</body>
+</html>

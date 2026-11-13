@@ -1,0 +1,17 @@
+{
+  "name": "markerboard",
+  "version": "1.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Dry-erase whiteboard explainers: a marker draws while the camera follows it, timed word-by-word to a real voiceover.",
+  "scripts": {
+    "check": "node scripts/check.cjs",
+    "render": "node scripts/render.cjs",
+    "mux": "node scripts/mux.cjs",
+    "build": "node scripts/check.cjs && node scripts/render.cjs && node scripts/mux.cjs",
+    "doctor": "node scripts/doctor.cjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "23.11.1"
+  }
+}
